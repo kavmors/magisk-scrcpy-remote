@@ -89,6 +89,11 @@ button:disabled {
   opacity: 0.45;
 }
 
+button.recording {
+  border-color: #f87171;
+  background: #7f1d1d;
+}
+
 .stage {
   min-height: 0;
   min-width: 0;

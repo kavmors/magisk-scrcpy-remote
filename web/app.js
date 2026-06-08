@@ -6,6 +6,8 @@ const tokenInput = document.querySelector("#token");
 const connectBtn = document.querySelector("#connect");
 const disconnectBtn = document.querySelector("#disconnect");
 const textInput = document.querySelector("#textInput");
+const screenshotBtn = document.querySelector("#screenshot");
+const recordBtn = document.querySelector("#record");
 
 const STREAM_VIDEO = 1;
 const STREAM_AUDIO = 2;
@@ -25,6 +27,9 @@ let lastVideoTimestamp = 0;
 let screenWidth = 1;
 let screenHeight = 1;
 let resizePending = false;
+let mediaRecorder;
+let recordedChunks = [];
+let recordStartedAt = "";
 
 setStatus("未连接");
 redirectInsecureLANToHTTPS();
@@ -36,9 +41,11 @@ form.addEventListener("submit", async (event) => {
 });
 
 disconnectBtn.addEventListener("click", () => disconnect());
+screenshotBtn.addEventListener("click", () => saveScreenshot());
+recordBtn.addEventListener("click", () => toggleRecording());
 
 document.querySelectorAll("[data-command='back']").forEach((button) => {
-  button.addEventListener("click", () => send({ type: "back" }));
+  button.addEventListener("click", () => sendBack());
 });
 
 document.querySelectorAll("[data-keycode]").forEach((button) => {
@@ -58,9 +65,18 @@ textInput.addEventListener("keydown", (event) => {
 });
 
 displayCanvas.addEventListener("pointerdown", (event) => {
+  if (event.button === 2) {
+    sendBack();
+    event.preventDefault();
+    return;
+  }
   pointerDown = true;
   displayCanvas.setPointerCapture(event.pointerId);
   sendPointer("down", event);
+});
+
+displayCanvas.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
 });
 
 displayCanvas.addEventListener("pointermove", (event) => {
@@ -158,6 +174,7 @@ function disconnect() {
   if (ws) ws.close();
   ws = undefined;
   closeDecoders();
+  stopRecording();
   connectBtn.disabled = false;
   disconnectBtn.disabled = true;
 }
@@ -347,6 +364,99 @@ function playAudio(audioData) {
   const startAt = Math.max(audioContext.currentTime, audioNextTime);
   source.start(startAt);
   audioNextTime = startAt + audioBuffer.duration;
+}
+
+function sendBack() {
+  send({ type: "back" });
+}
+
+function saveScreenshot() {
+  if (!displayCanvas.width || !displayCanvas.height) return;
+  const filename = `screenshot_${datetimeStamp()}.png`;
+  displayCanvas.toBlob((blob) => {
+    if (!blob) return;
+    downloadBlob(blob, filename);
+  }, "image/png");
+}
+
+function toggleRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    stopRecording();
+    return;
+  }
+  startRecording();
+}
+
+function startRecording() {
+  if (!displayCanvas.captureStream || typeof MediaRecorder === "undefined") {
+    setStatus("当前浏览器不支持录屏");
+    return;
+  }
+  const stream = displayCanvas.captureStream(30);
+  const options = preferredRecorderOptions();
+  recordedChunks = [];
+  recordStartedAt = datetimeStamp();
+  mediaRecorder = new MediaRecorder(stream, options);
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+  });
+  mediaRecorder.addEventListener("stop", () => {
+    const mimeType = mediaRecorder.mimeType || options.mimeType || "video/webm";
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    recordedChunks = [];
+    stream.getTracks().forEach((track) => track.stop());
+    mediaRecorder = undefined;
+    recordBtn.textContent = "录屏";
+    recordBtn.classList.remove("recording");
+    if (blob.size > 0) downloadBlob(blob, `screenrecord_${recordStartedAt}.webm`);
+    recordStartedAt = "";
+  });
+  mediaRecorder.start(1000);
+  recordBtn.textContent = "停止录屏";
+  recordBtn.classList.add("recording");
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
+}
+
+function preferredRecorderOptions() {
+  const candidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+  for (const mimeType of candidates) {
+    if (MediaRecorder.isTypeSupported(mimeType)) return { mimeType, videoBitsPerSecond: 6000000 };
+  }
+  return { videoBitsPerSecond: 6000000 };
+}
+
+function datetimeStamp() {
+  const d = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    d.getFullYear(),
+    pad(d.getMonth() + 1),
+    pad(d.getDate()),
+    "_",
+    pad(d.getHours()),
+    pad(d.getMinutes()),
+    pad(d.getSeconds()),
+  ].join("");
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function sendPointer(action, event) {

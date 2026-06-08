@@ -1,0 +1,16 @@
+{
+  "listen": "0.0.0.0:13014",
+  "stateDir": "/data/adb/magisk-scrcpy-remote",
+  "scrcpyServerPath": "/data/adb/modules/magisk-scrcpy-remote/bin/scrcpy-server-v4.0",
+  "deviceScrcpyServerPath": "/data/local/tmp/msr-scrcpy-server.jar",
+  "video": {
+    "maxSize": 1280,
+    "maxFps": 30,
+    "bitRate": 4000000
+  },
+  "audio": {
+    "enabled": true,
+    "bitRate": 128000,
+    "source": "output"
+  }
+}

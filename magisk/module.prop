@@ -1,0 +1,6 @@
+id=magisk-scrcpy-remote
+name=Magisk Scrcpy Remote
+version=0.1.0
+versionCode=1
+author=KavMors
+description=LAN WebRTC screen, audio, and control using scrcpy-server on-device.

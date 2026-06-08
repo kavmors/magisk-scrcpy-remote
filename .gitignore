@@ -1,0 +1,21 @@
+# Build artifacts
+/dist/
+/magisk/bin/msr-daemon-arm64
+
+# Local runtime/test output
+*.log
+*.tmp
+/magisk/token
+
+# Go
+/bin/
+/coverage.out
+
+# macOS
+.DS_Store
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo

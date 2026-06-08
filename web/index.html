@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scrcpy Remote</title>
+    <link rel="stylesheet" href="./style.css?v=20260607-fit" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>Scrcpy Remote</h1>
+          <p id="status">未连接</p>
+        </div>
+        <form id="connectForm" class="connect">
+          <input id="token" name="token" autocomplete="current-password" placeholder="Token" />
+          <button id="connect" type="submit">连接</button>
+          <button id="disconnect" type="button" disabled>断开</button>
+        </form>
+      </header>
+
+      <section class="stage">
+        <canvas id="displayCanvas" class="screen"></canvas>
+      </section>
+
+      <footer class="controls">
+        <button data-command="back">返回</button>
+        <button data-keycode="3">主页</button>
+        <button data-keycode="187">多任务</button>
+        <input id="textInput" placeholder="输入文字后按 Enter" />
+      </footer>
+    </main>
+
+    <script src="./app.js?v=20260607-fit"></script>
+  </body>
+</html>

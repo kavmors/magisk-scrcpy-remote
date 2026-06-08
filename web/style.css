@@ -1,0 +1,148 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #101215;
+  color: #f3f6f8;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #101215;
+}
+
+.app {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.topbar,
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #171b20;
+  border-bottom: 1px solid #29313a;
+  flex-shrink: 0;
+}
+
+.controls {
+  border-top: 1px solid #29313a;
+  border-bottom: 0;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+p {
+  margin: 3px 0 0;
+  color: #9aa7b4;
+  font-size: 13px;
+}
+
+.connect {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+input,
+button {
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid #384452;
+  background: #20262d;
+  color: #f3f6f8;
+  font: inherit;
+}
+
+input {
+  min-width: 220px;
+  padding: 0 10px;
+}
+
+button {
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.stage {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #050607;
+  padding: 12px;
+}
+
+.screen {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  outline: none;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  object-fit: contain;
+  background: #000;
+}
+
+.controls {
+  flex-wrap: wrap;
+}
+
+#textInput {
+  flex: 1 1 220px;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .connect {
+    margin-left: 0;
+  }
+
+  .connect input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .topbar,
+  .controls {
+    padding: 8px;
+  }
+
+  button {
+    padding: 0 10px;
+  }
+}

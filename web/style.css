@@ -26,7 +26,7 @@ body {
   height: 100vh;
   height: 100dvh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   overflow: hidden;
 }
 
@@ -44,6 +44,46 @@ body {
 .controls {
   border-top: 1px solid #29313a;
   border-bottom: 0;
+}
+
+.tools {
+  max-height: 38vh;
+  overflow: auto;
+  border-top: 1px solid #29313a;
+  background: #12161a;
+}
+
+.tools summary {
+  padding: 10px 16px;
+  cursor: pointer;
+  color: #d7dee6;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.3fr) minmax(320px, 1fr);
+  gap: 12px;
+  padding: 0 16px 14px;
+}
+
+.tool-panel {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.tool-panel h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f3f6f8;
+}
+
+.tool-row {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
 }
 
 h1 {
@@ -77,6 +117,11 @@ button {
 input {
   min-width: 220px;
   padding: 0 10px;
+}
+
+input[type="file"] {
+  min-width: 0;
+  padding: 6px;
 }
 
 button {
@@ -126,6 +171,65 @@ button.recording {
   flex: 1 1 220px;
 }
 
+.tool-row input:not([type="file"]) {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-row input[type="file"] {
+  flex: 1;
+}
+
+.tool-output {
+  min-height: 44px;
+  max-height: 140px;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #29313a;
+  border-radius: 6px;
+  background: #090b0d;
+  color: #c8d3df;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.file-list {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #29313a;
+  border-radius: 6px;
+  background: #090b0d;
+}
+
+.file-entry {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid #1b222a;
+  color: #dce5ee;
+}
+
+.file-entry:last-child {
+  border-bottom: 0;
+}
+
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
+  color: #8d9aa8;
+  font-size: 12px;
+}
+
 @media (max-width: 720px) {
   .topbar {
     align-items: stretch;
@@ -149,5 +253,14 @@ button.recording {
 
   button {
     padding: 0 10px;
+  }
+
+  .tool-grid {
+    grid-template-columns: 1fr;
+    padding: 0 8px 10px;
+  }
+
+  .tool-row {
+    flex-wrap: wrap;
   }
 }

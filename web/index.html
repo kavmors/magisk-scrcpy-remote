@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Scrcpy Remote</title>
-    <link rel="stylesheet" href="./style.css?v=20260608-capture" />
+    <link rel="stylesheet" href="./style.css?v=20260608-tools" />
   </head>
   <body>
     <main class="app">
@@ -32,8 +32,46 @@
         <button id="record" type="button">录屏</button>
         <input id="textInput" placeholder="输入文字后按 Enter" />
       </footer>
+
+      <details class="tools">
+        <summary>设备工具</summary>
+        <div class="tool-grid">
+          <section class="tool-panel">
+            <h2>安装 APK</h2>
+            <div class="tool-row">
+              <input id="apkFile" type="file" accept=".apk,application/vnd.android.package-archive" />
+              <button id="installApk" type="button">安装</button>
+            </div>
+            <pre id="apkOutput" class="tool-output"></pre>
+          </section>
+
+          <section class="tool-panel">
+            <h2>文件管理</h2>
+            <div class="tool-row">
+              <input id="filePath" value="/sdcard" />
+              <button id="fileRefresh" type="button">刷新</button>
+              <button id="fileParent" type="button">上级</button>
+            </div>
+            <div class="tool-row">
+              <input id="fileUpload" type="file" />
+              <button id="uploadFile" type="button">上传</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+            <pre id="fileOutput" class="tool-output"></pre>
+          </section>
+
+          <section class="tool-panel">
+            <h2>Shell</h2>
+            <div class="tool-row">
+              <input id="shellCommand" placeholder="id; getprop ro.build.version.release" />
+              <button id="runShell" type="button">执行</button>
+            </div>
+            <pre id="shellOutput" class="tool-output"></pre>
+          </section>
+        </div>
+      </details>
     </main>
 
-    <script src="./app.js?v=20260608-capture"></script>
+    <script src="./app.js?v=20260608-tools"></script>
   </body>
 </html>

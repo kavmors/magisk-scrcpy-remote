@@ -6,11 +6,17 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -74,6 +80,11 @@ func main() {
 	srv := &server{cfg: cfg, webDir: webDir, token: token, replaceWait: 5 * time.Second}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/status", srv.handleStatus)
+	mux.HandleFunc("/api/install-apk", srv.handleInstallAPK)
+	mux.HandleFunc("/api/files", srv.handleFiles)
+	mux.HandleFunc("/api/files/upload", srv.handleFileUpload)
+	mux.HandleFunc("/api/files/download", srv.handleFileDownload)
+	mux.HandleFunc("/api/shell", srv.handleShell)
 	mux.HandleFunc("/ws", srv.handleWSStream)
 	mux.HandleFunc("/ws-stream", srv.handleWSStream)
 	mux.Handle("/", http.FileServer(http.Dir(webDir)))
@@ -125,6 +136,164 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"active":        active,
 		"tokenRequired": s.token != "",
 		"audio":         s.cfg.Audio.Enabled,
+	})
+}
+
+func (s *server) handleInstallAPK(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuthorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	uploadDir := filepath.Join(s.cfg.StateDir, "uploads")
+	apkPath, originalName, err := saveMultipartFile(r, uploadDir, "apk", ".apk")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer os.Remove(apkPath)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	out, runErr := exec.CommandContext(ctx, "pm", "install", "-r", "-t", apkPath).CombinedOutput()
+	status := "ok"
+	if runErr != nil {
+		status = "error"
+	}
+	writeJSON(w, map[string]any{
+		"status": status,
+		"name":   originalName,
+		"output": strings.TrimSpace(string(out)),
+		"error":  errorString(runErr),
+	})
+}
+
+func (s *server) handleFiles(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuthorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := cleanDevicePath(r.URL.Query().Get("path"), "/sdcard")
+	info, err := os.Stat(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if !info.IsDir() {
+		writeJSON(w, map[string]any{
+			"path":    path,
+			"entries": []fileEntry{entryFor(path, info)},
+		})
+		return
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	items := make([]fileEntry, 0, len(entries))
+	for _, entry := range entries {
+		itemInfo, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		items = append(items, entryFor(filepath.Join(path, entry.Name()), itemInfo))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].IsDir != items[j].IsDir {
+			return items[i].IsDir
+		}
+		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+	})
+	writeJSON(w, map[string]any{
+		"path":    path,
+		"parent":  parentDevicePath(path),
+		"entries": items,
+	})
+}
+
+func (s *server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuthorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	targetDir := cleanDevicePath(r.URL.Query().Get("path"), "/sdcard/Download")
+	savedPath, originalName, err := saveMultipartFile(r, targetDir, "file", "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"status": "ok",
+		"name":   originalName,
+		"path":   savedPath,
+	})
+}
+
+func (s *server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuthorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := cleanDevicePath(r.URL.Query().Get("path"), "")
+	info, err := os.Stat(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "cannot download directory", http.StatusBadRequest)
+		return
+	}
+	name := filepath.Base(path)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	http.ServeFile(w, r, path)
+}
+
+func (s *server) handleShell(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuthorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Command string `json:"command"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024*1024)).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.Command = strings.TrimSpace(req.Command)
+	if req.Command == "" {
+		http.Error(w, "command is required", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/system/bin/sh", "-c", req.Command).CombinedOutput()
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	writeJSON(w, map[string]any{
+		"status":   status,
+		"command":  req.Command,
+		"output":   string(out),
+		"error":    errorString(err),
+		"timedOut": ctx.Err() == context.DeadlineExceeded,
 	})
 }
 
@@ -226,6 +395,132 @@ func (s *server) authorized(r *http.Request) bool {
 		token = r.Header.Get("X-MSR-Token")
 	}
 	return subtle.ConstantTimeCompare([]byte(token), []byte(s.token)) == 1
+}
+
+func (s *server) requireAuthorized(w http.ResponseWriter, r *http.Request) bool {
+	if s.authorized(r) {
+		return true
+	}
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+	return false
+}
+
+type fileEntry struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	IsDir   bool   `json:"isDir"`
+	Size    int64  `json:"size"`
+	Mode    string `json:"mode"`
+	ModTime string `json:"modTime"`
+}
+
+func entryFor(path string, info os.FileInfo) fileEntry {
+	return fileEntry{
+		Name:    info.Name(),
+		Path:    path,
+		IsDir:   info.IsDir(),
+		Size:    info.Size(),
+		Mode:    info.Mode().String(),
+		ModTime: info.ModTime().Format(time.RFC3339),
+	}
+}
+
+func cleanDevicePath(path, fallback string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = fallback
+	}
+	if path == "" {
+		path = "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return filepath.Clean(path)
+}
+
+func parentDevicePath(path string) string {
+	path = filepath.Clean(path)
+	if path == "/" {
+		return ""
+	}
+	return filepath.Dir(path)
+}
+
+func saveMultipartFile(r *http.Request, targetDir, fieldName, fallbackExt string) (string, string, error) {
+	reader, err := r.MultipartReader()
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return "", "", err
+	}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", "", err
+		}
+		if part.FormName() != fieldName {
+			_ = part.Close()
+			continue
+		}
+		originalName := filepath.Base(part.FileName())
+		if originalName == "." || originalName == "/" || originalName == "" {
+			originalName = fieldName + fallbackExt
+		}
+		targetPath := filepath.Join(targetDir, originalName)
+		if fallbackExt != "" {
+			tmp, err := os.CreateTemp(targetDir, "upload-*"+fallbackExt)
+			if err != nil {
+				_ = part.Close()
+				return "", "", err
+			}
+			targetPath = tmp.Name()
+			if _, err := io.Copy(tmp, part); err != nil {
+				_ = tmp.Close()
+				_ = part.Close()
+				return "", "", err
+			}
+			if err := tmp.Close(); err != nil {
+				_ = part.Close()
+				return "", "", err
+			}
+			_ = part.Close()
+			return targetPath, originalName, nil
+		}
+		out, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		if err != nil {
+			_ = part.Close()
+			return "", "", err
+		}
+		if _, err := io.Copy(out, part); err != nil {
+			_ = out.Close()
+			_ = part.Close()
+			return "", "", err
+		}
+		if err := out.Close(); err != nil {
+			_ = part.Close()
+			return "", "", err
+		}
+		_ = part.Close()
+		return targetPath, originalName, nil
+	}
+	return "", "", fmt.Errorf("missing multipart field %q", fieldName)
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func logRequests(next http.Handler) http.Handler {

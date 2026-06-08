@@ -121,3 +121,17 @@ dist/magisk-scrcpy-remote.zip
 ```
 
 The module is intended for Android 14 arm64 and bundles scrcpy server v4.0.
+
+## Device Tools
+
+The web UI includes a collapsible device tools panel. These APIs require the
+same token used by the stream connection.
+
+- APK install: uploads an `.apk` and runs `pm install -r -t` on the phone.
+- File manager: lists absolute paths, uploads into the current directory, and
+  downloads regular files.
+- Shell: runs commands through `/system/bin/sh -c` with a 60 second timeout.
+
+The daemon runs from a Magisk module, so shell and file operations run with the
+module process privileges. Keep the token private when exposing the page through
+frp.

@@ -8,6 +8,20 @@ const disconnectBtn = document.querySelector("#disconnect");
 const textInput = document.querySelector("#textInput");
 const screenshotBtn = document.querySelector("#screenshot");
 const recordBtn = document.querySelector("#record");
+const apkFileInput = document.querySelector("#apkFile");
+const installApkBtn = document.querySelector("#installApk");
+const apkOutput = document.querySelector("#apkOutput");
+const filePathInput = document.querySelector("#filePath");
+const fileRefreshBtn = document.querySelector("#fileRefresh");
+const fileParentBtn = document.querySelector("#fileParent");
+const fileUploadInput = document.querySelector("#fileUpload");
+const uploadFileBtn = document.querySelector("#uploadFile");
+const fileList = document.querySelector("#fileList");
+const fileOutput = document.querySelector("#fileOutput");
+const shellCommandInput = document.querySelector("#shellCommand");
+const runShellBtn = document.querySelector("#runShell");
+const shellOutput = document.querySelector("#shellOutput");
+const toolsDetails = document.querySelector(".tools");
 
 const STREAM_VIDEO = 1;
 const STREAM_AUDIO = 2;
@@ -30,6 +44,8 @@ let resizePending = false;
 let mediaRecorder;
 let recordedChunks = [];
 let recordStartedAt = "";
+let currentFileParent = "";
+let filesLoaded = false;
 
 setStatus("未连接");
 redirectInsecureLANToHTTPS();
@@ -43,6 +59,19 @@ form.addEventListener("submit", async (event) => {
 disconnectBtn.addEventListener("click", () => disconnect());
 screenshotBtn.addEventListener("click", () => saveScreenshot());
 recordBtn.addEventListener("click", () => toggleRecording());
+installApkBtn.addEventListener("click", () => installAPK());
+fileRefreshBtn.addEventListener("click", () => loadFiles(filePathInput.value));
+fileParentBtn.addEventListener("click", () => {
+  if (currentFileParent) loadFiles(currentFileParent);
+});
+uploadFileBtn.addEventListener("click", () => uploadFile());
+runShellBtn.addEventListener("click", () => runShell());
+toolsDetails.addEventListener("toggle", () => {
+  if (toolsDetails.open && !filesLoaded) {
+    filesLoaded = true;
+    loadFiles(filePathInput.value);
+  }
+});
 
 document.querySelectorAll("[data-command='back']").forEach((button) => {
   button.addEventListener("click", () => sendBack());
@@ -60,6 +89,13 @@ textInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && textInput.value) {
     send({ type: "text", text: textInput.value });
     textInput.value = "";
+    event.preventDefault();
+  }
+});
+
+shellCommandInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    runShell();
     event.preventDefault();
   }
 });
@@ -457,6 +493,178 @@ function downloadBlob(blob, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function installAPK() {
+  const file = apkFileInput.files[0];
+  if (!file) {
+    apkOutput.textContent = "请选择 APK 文件";
+    return;
+  }
+  installApkBtn.disabled = true;
+  apkOutput.textContent = "安装中...";
+  try {
+    const body = new FormData();
+    body.append("apk", file);
+    const result = await apiJSON("/api/install-apk", { method: "POST", body });
+    apkOutput.textContent = formatResult(result);
+  } catch (error) {
+    apkOutput.textContent = String(error.message || error);
+  } finally {
+    installApkBtn.disabled = false;
+  }
+}
+
+async function loadFiles(path = "/sdcard") {
+  fileRefreshBtn.disabled = true;
+  fileOutput.textContent = "读取中...";
+  try {
+    const data = await apiJSON(`/api/files?path=${encodeURIComponent(path || "/sdcard")}`);
+    filePathInput.value = data.path || path;
+    currentFileParent = data.parent || "";
+    renderFileList(data.entries || []);
+    fileOutput.textContent = `${data.entries?.length || 0} 项`;
+  } catch (error) {
+    fileOutput.textContent = String(error.message || error);
+  } finally {
+    fileRefreshBtn.disabled = false;
+  }
+}
+
+function renderFileList(entries) {
+  fileList.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "file-entry";
+    empty.textContent = "空目录";
+    fileList.appendChild(empty);
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "file-entry";
+
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "file-name";
+    name.textContent = `${entry.isDir ? "目录 " : "文件 "}${entry.name}`;
+    name.addEventListener("click", () => {
+      if (entry.isDir) {
+        loadFiles(entry.path);
+      } else {
+        downloadFile(entry);
+      }
+    });
+
+    const meta = document.createElement("span");
+    meta.className = "file-meta";
+    meta.textContent = entry.isDir ? entry.mode : `${formatBytes(entry.size)} ${entry.mode}`;
+
+    const action = document.createElement("button");
+    action.type = "button";
+    action.textContent = entry.isDir ? "打开" : "下载";
+    action.addEventListener("click", () => {
+      if (entry.isDir) {
+        loadFiles(entry.path);
+      } else {
+        downloadFile(entry);
+      }
+    });
+
+    row.append(name, meta, action);
+    fileList.appendChild(row);
+  }
+}
+
+async function uploadFile() {
+  const file = fileUploadInput.files[0];
+  if (!file) {
+    fileOutput.textContent = "请选择要上传的文件";
+    return;
+  }
+  uploadFileBtn.disabled = true;
+  fileOutput.textContent = "上传中...";
+  try {
+    const body = new FormData();
+    body.append("file", file);
+    const result = await apiJSON(`/api/files/upload?path=${encodeURIComponent(filePathInput.value || "/sdcard/Download")}`, {
+      method: "POST",
+      body,
+    });
+    fileOutput.textContent = formatResult(result);
+    await loadFiles(filePathInput.value);
+  } catch (error) {
+    fileOutput.textContent = String(error.message || error);
+  } finally {
+    uploadFileBtn.disabled = false;
+  }
+}
+
+async function downloadFile(entry) {
+  fileOutput.textContent = "下载中...";
+  try {
+    const response = await apiFetch(`/api/files/download?path=${encodeURIComponent(entry.path)}`);
+    const blob = await response.blob();
+    downloadBlob(blob, entry.name);
+    fileOutput.textContent = `已下载 ${entry.path}`;
+  } catch (error) {
+    fileOutput.textContent = String(error.message || error);
+  }
+}
+
+async function runShell() {
+  const command = shellCommandInput.value.trim();
+  if (!command) {
+    shellOutput.textContent = "请输入命令";
+    return;
+  }
+  runShellBtn.disabled = true;
+  shellOutput.textContent = "执行中...";
+  try {
+    const result = await apiJSON("/api/shell", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command }),
+    });
+    shellOutput.textContent = formatResult(result);
+  } catch (error) {
+    shellOutput.textContent = String(error.message || error);
+  } finally {
+    runShellBtn.disabled = false;
+  }
+}
+
+async function apiJSON(path, options = {}) {
+  const response = await apiFetch(path, options);
+  return response.json();
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = tokenInput.value.trim();
+  if (token) headers.set("X-MSR-Token", token);
+  const response = await fetch(path, { ...options, headers });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `${response.status} ${response.statusText}`);
+  }
+  return response;
+}
+
+function formatResult(result) {
+  return JSON.stringify(result, null, 2);
+}
+
+function formatBytes(size) {
+  if (!Number.isFinite(size)) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value.toFixed(index ? 1 : 0)} ${units[index]}`;
 }
 
 function sendPointer(action, event) {

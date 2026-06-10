@@ -29,6 +29,7 @@ const FLAG_CONFIG = 1;
 const FLAG_KEYFRAME = 2;
 const SCREEN_FIT_PADDING = 16;
 const SCREEN_MAX_SCALE = 0.96;
+const TOKEN_STORAGE_KEY = "msr.lastConnectedToken";
 
 let ws;
 let videoDecoder;
@@ -47,6 +48,7 @@ let recordStartedAt = "";
 let currentFileParent = "";
 let filesLoaded = false;
 
+restoreSavedToken();
 setStatus("未连接");
 redirectInsecureLANToHTTPS();
 window.addEventListener("resize", scheduleScreenFit);
@@ -187,6 +189,7 @@ async function connect() {
   ws = new WebSocket(`${scheme}://${location.host}/ws-stream?token=${token}`);
   ws.binaryType = "arraybuffer";
   ws.onopen = () => {
+    rememberConnectedToken(tokenInput.value.trim());
     setStatus("已连接");
     disconnectBtn.disabled = false;
   };
@@ -236,6 +239,27 @@ function redirectInsecureLANToHTTPS() {
 
 function isLoopbackHost(hostname) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+}
+
+function restoreSavedToken() {
+  try {
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (token) tokenInput.value = token;
+  } catch (error) {
+    console.warn("restore token failed", error);
+  }
+}
+
+function rememberConnectedToken(token) {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.warn("save token failed", error);
+  }
 }
 
 function initVideoDecoder(codec = "avc1.42E01F") {

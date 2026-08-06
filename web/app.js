@@ -8,6 +8,9 @@ const disconnectBtn = document.querySelector("#disconnect");
 const textInput = document.querySelector("#textInput");
 const screenshotBtn = document.querySelector("#screenshot");
 const recordBtn = document.querySelector("#record");
+const toolScreens = document.querySelectorAll(".tool-screen");
+const openToolButtons = document.querySelectorAll("[data-tool-open]");
+const closeToolButtons = document.querySelectorAll("[data-tool-close]");
 const apkFileInput = document.querySelector("#apkFile");
 const installApkBtn = document.querySelector("#installApk");
 const apkOutput = document.querySelector("#apkOutput");
@@ -18,10 +21,14 @@ const fileUploadInput = document.querySelector("#fileUpload");
 const uploadFileBtn = document.querySelector("#uploadFile");
 const fileList = document.querySelector("#fileList");
 const fileOutput = document.querySelector("#fileOutput");
+const shellForm = document.querySelector("#shellForm");
 const shellCommandInput = document.querySelector("#shellCommand");
+const connectShellBtn = document.querySelector("#connectShell");
+const disconnectShellBtn = document.querySelector("#disconnectShell");
+const clearShellBtn = document.querySelector("#clearShell");
 const runShellBtn = document.querySelector("#runShell");
 const shellOutput = document.querySelector("#shellOutput");
-const toolsDetails = document.querySelector(".tools");
+const shellState = document.querySelector("#shellState");
 
 const STREAM_VIDEO = 1;
 const STREAM_AUDIO = 2;
@@ -47,6 +54,8 @@ let recordedChunks = [];
 let recordStartedAt = "";
 let currentFileParent = "";
 let filesLoaded = false;
+let shellWS;
+let pendingShellCommands = [];
 
 restoreSavedToken();
 setStatus("未连接");
@@ -61,18 +70,26 @@ form.addEventListener("submit", async (event) => {
 disconnectBtn.addEventListener("click", () => disconnect());
 screenshotBtn.addEventListener("click", () => saveScreenshot());
 recordBtn.addEventListener("click", () => toggleRecording());
+openToolButtons.forEach((button) => {
+  button.addEventListener("click", () => openTool(button.dataset.toolOpen));
+});
+closeToolButtons.forEach((button) => {
+  button.addEventListener("click", () => closeTool());
+});
 installApkBtn.addEventListener("click", () => installAPK());
 fileRefreshBtn.addEventListener("click", () => loadFiles(filePathInput.value));
 fileParentBtn.addEventListener("click", () => {
   if (currentFileParent) loadFiles(currentFileParent);
 });
 uploadFileBtn.addEventListener("click", () => uploadFile());
-runShellBtn.addEventListener("click", () => runShell());
-toolsDetails.addEventListener("toggle", () => {
-  if (toolsDetails.open && !filesLoaded) {
-    filesLoaded = true;
-    loadFiles(filePathInput.value);
-  }
+shellForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendShellCommand();
+});
+connectShellBtn.addEventListener("click", () => startShellSession());
+disconnectShellBtn.addEventListener("click", () => stopShellSession());
+clearShellBtn.addEventListener("click", () => {
+  shellOutput.textContent = "";
 });
 
 document.querySelectorAll("[data-command='back']").forEach((button) => {
@@ -91,13 +108,6 @@ textInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && textInput.value) {
     send({ type: "text", text: textInput.value });
     textInput.value = "";
-    event.preventDefault();
-  }
-});
-
-shellCommandInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    runShell();
     event.preventDefault();
   }
 });
@@ -144,6 +154,13 @@ displayCanvas.addEventListener("wheel", (event) => {
 }, { passive: false });
 
 window.addEventListener("keydown", (event) => {
+  if (activeTool()) {
+    if (event.key === "Escape") {
+      closeTool();
+      event.preventDefault();
+    }
+    return;
+  }
   if (!isConnected() || event.target === tokenInput || event.target === textInput) return;
   const androidKeyCode = keyToAndroid(event);
   if (!androidKeyCode) return;
@@ -152,6 +169,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => {
+  if (activeTool()) return;
   if (!isConnected() || event.target === tokenInput || event.target === textInput) return;
   const androidKeyCode = keyToAndroid(event);
   if (!androidKeyCode) return;
@@ -519,6 +537,34 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function openTool(id) {
+  closeTool();
+  const screen = document.querySelector(`#${id}`);
+  if (!screen) return;
+  screen.classList.add("open");
+  screen.setAttribute("aria-hidden", "false");
+  const closeButton = screen.querySelector("[data-tool-close]");
+  if (closeButton) closeButton.focus();
+  if (id === "filesTool" && !filesLoaded) {
+    filesLoaded = true;
+    loadFiles(filePathInput.value);
+  }
+  if (id === "shellTool") {
+    startShellSession();
+  }
+}
+
+function closeTool() {
+  const screen = activeTool();
+  if (!screen) return;
+  screen.classList.remove("open");
+  screen.setAttribute("aria-hidden", "true");
+}
+
+function activeTool() {
+  return document.querySelector(".tool-screen.open");
+}
+
 async function installAPK() {
   const file = apkFileInput.files[0];
   if (!file) {
@@ -636,26 +682,69 @@ async function downloadFile(entry) {
   }
 }
 
-async function runShell() {
+function startShellSession() {
+  if (shellWS && (shellWS.readyState === WebSocket.OPEN || shellWS.readyState === WebSocket.CONNECTING)) return;
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  const token = encodeURIComponent(tokenInput.value.trim());
+  shellWS = new WebSocket(`${scheme}://${location.host}/api/shell-stream?token=${token}`);
+  setShellState("连接中");
+  shellWS.onopen = () => {
+    setShellState("已连接");
+    flushPendingShellCommands();
+  };
+  shellWS.onmessage = (event) => {
+    appendShellOutput(String(event.data));
+  };
+  shellWS.onerror = () => {
+    setShellState("连接失败");
+  };
+  shellWS.onclose = () => {
+    shellWS = undefined;
+    setShellState("已断开");
+  };
+}
+
+function stopShellSession() {
+  if (shellWS) shellWS.close();
+  shellWS = undefined;
+  pendingShellCommands = [];
+  setShellState("已断开");
+}
+
+function sendShellCommand() {
   const command = shellCommandInput.value.trim();
   if (!command) {
-    shellOutput.textContent = "请输入命令";
     return;
   }
-  runShellBtn.disabled = true;
-  shellOutput.textContent = "执行中...";
-  try {
-    const result = await apiJSON("/api/shell", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command }),
-    });
-    shellOutput.textContent = formatResult(result);
-  } catch (error) {
-    shellOutput.textContent = String(error.message || error);
-  } finally {
-    runShellBtn.disabled = false;
+  shellCommandInput.value = "";
+  appendShellOutput(`$ ${command}\n`);
+  if (!shellWS || shellWS.readyState !== WebSocket.OPEN) {
+    pendingShellCommands.push(command);
+    startShellSession();
+    return;
   }
+  shellWS.send(`${command}\n`);
+}
+
+function flushPendingShellCommands() {
+  if (!shellWS || shellWS.readyState !== WebSocket.OPEN) return;
+  for (const command of pendingShellCommands) {
+    shellWS.send(`${command}\n`);
+  }
+  pendingShellCommands = [];
+}
+
+function appendShellOutput(text) {
+  shellOutput.textContent += text;
+  shellOutput.scrollTop = shellOutput.scrollHeight;
+}
+
+function setShellState(text) {
+  shellState.textContent = text;
+  const connected = text === "已连接";
+  connectShellBtn.disabled = connected || text === "连接中";
+  disconnectShellBtn.disabled = !shellWS;
+  runShellBtn.disabled = text === "连接中";
 }
 
 async function apiJSON(path, options = {}) {

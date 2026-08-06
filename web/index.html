@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Scrcpy Remote</title>
-    <link rel="stylesheet" href="./style.css?v=20260610-token" />
+    <link rel="stylesheet" href="./style.css?v=20260610-tools-split" />
   </head>
   <body>
     <main class="app">
@@ -30,23 +30,41 @@
         <button data-keycode="187">多任务</button>
         <button id="screenshot" type="button">截图</button>
         <button id="record" type="button">录屏</button>
+        <button data-tool-open="installTool" type="button">安装应用</button>
+        <button data-tool-open="filesTool" type="button">文件管理</button>
+        <button data-tool-open="shellTool" type="button">Shell</button>
         <input id="textInput" placeholder="输入文字后按 Enter" />
       </footer>
 
-      <details class="tools">
-        <summary>设备工具</summary>
-        <div class="tool-grid">
-          <section class="tool-panel">
-            <h2>安装 APK</h2>
+      <section id="installTool" class="tool-screen" aria-hidden="true">
+        <header class="tool-header">
+          <div>
+            <h2>安装应用</h2>
+            <p>上传 APK 并安装到设备</p>
+          </div>
+          <button data-tool-close type="button">关闭</button>
+        </header>
+        <div class="tool-body single-tool">
+          <section class="tool-panel install-panel">
             <div class="tool-row">
               <input id="apkFile" type="file" accept=".apk,application/vnd.android.package-archive" />
               <button id="installApk" type="button">安装</button>
             </div>
             <pre id="apkOutput" class="tool-output"></pre>
           </section>
+        </div>
+      </section>
 
-          <section class="tool-panel">
+      <section id="filesTool" class="tool-screen" aria-hidden="true">
+        <header class="tool-header">
+          <div>
             <h2>文件管理</h2>
+            <p>查看、上传、下载设备文件</p>
+          </div>
+          <button data-tool-close type="button">关闭</button>
+        </header>
+        <div class="tool-body">
+          <section class="tool-panel file-panel">
             <div class="tool-row">
               <input id="filePath" value="/sdcard" />
               <button id="fileRefresh" type="button">刷新</button>
@@ -59,19 +77,36 @@
             <div id="fileList" class="file-list"></div>
             <pre id="fileOutput" class="tool-output"></pre>
           </section>
+        </div>
+      </section>
 
-          <section class="tool-panel">
+      <section id="shellTool" class="tool-screen" aria-hidden="true">
+        <header class="tool-header">
+          <div>
             <h2>Shell</h2>
-            <div class="tool-row">
-              <input id="shellCommand" placeholder="id; getprop ro.build.version.release" />
-              <button id="runShell" type="button">执行</button>
+            <p>保持一个类似 adb shell 的交互式会话</p>
+          </div>
+          <button data-tool-close type="button">关闭</button>
+        </header>
+        <div class="tool-body">
+          <section class="tool-panel shell-panel">
+            <div class="tool-row shell-actions">
+              <button id="connectShell" type="button">连接 Shell</button>
+              <button id="disconnectShell" type="button" disabled>断开</button>
+              <button id="clearShell" type="button">清空</button>
+              <span id="shellState" class="shell-state">未连接</span>
             </div>
-            <pre id="shellOutput" class="tool-output"></pre>
+            <pre id="shellOutput" class="tool-output terminal-output"></pre>
+            <form id="shellForm" class="tool-row shell-input">
+              <span class="prompt">$</span>
+              <input id="shellCommand" placeholder="id; getprop ro.build.version.release" />
+              <button id="runShell" type="submit">发送</button>
+            </form>
           </section>
         </div>
-      </details>
+      </section>
     </main>
 
-    <script src="./app.js?v=20260610-token"></script>
+    <script src="./app.js?v=20260610-tools-split"></script>
   </body>
 </html>

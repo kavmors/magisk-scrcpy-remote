@@ -130,7 +130,8 @@ same token used by the stream connection.
 - APK install: uploads an `.apk` and runs `pm install -r -t` on the phone.
 - File manager: lists absolute paths, uploads into the current directory, and
   downloads regular files.
-- Shell: runs commands through `/system/bin/sh -c` with a 60 second timeout.
+- Shell: opens an interactive `/system/bin/sh -i` WebSocket session so commands
+  can be sent continuously and output is streamed back in real time.
 
 The daemon runs from a Magisk module, so shell and file operations run with the
 module process privileges. Keep the token private when exposing the page through

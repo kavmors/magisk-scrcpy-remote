@@ -85,6 +85,7 @@ func main() {
 	mux.HandleFunc("/api/files/upload", srv.handleFileUpload)
 	mux.HandleFunc("/api/files/download", srv.handleFileDownload)
 	mux.HandleFunc("/api/shell", srv.handleShell)
+	mux.HandleFunc("/api/shell-stream", srv.handleShellStream)
 	mux.HandleFunc("/ws", srv.handleWSStream)
 	mux.HandleFunc("/ws-stream", srv.handleWSStream)
 	mux.Handle("/", http.FileServer(http.Dir(webDir)))
@@ -295,6 +296,28 @@ func (s *server) handleShell(w http.ResponseWriter, r *http.Request) {
 		"error":    errorString(err),
 		"timedOut": ctx.Err() == context.DeadlineExceeded,
 	})
+}
+
+func (s *server) handleShellStream(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"*"},
+	})
+	if err != nil {
+		log.Printf("shell websocket accept: %v", err)
+		return
+	}
+	defer ws.Close(websocket.StatusNormalClosure, "")
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	if err := runInteractiveShell(ctx, ws); err != nil {
+		log.Printf("interactive shell ended: %v", err)
+		_ = ws.Close(websocket.StatusInternalError, err.Error())
+	}
 }
 
 func (s *server) handleWSStream(w http.ResponseWriter, r *http.Request) {
@@ -521,6 +544,100 @@ func errorString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+type shellWSWriter struct {
+	mu sync.Mutex
+	ws *websocket.Conn
+}
+
+func runInteractiveShell(ctx context.Context, ws *websocket.Conn) error {
+	writer := &shellWSWriter{ws: ws}
+	_ = writer.write(ctx, "[shell starting]\n")
+
+	cmd := exec.CommandContext(ctx, "/system/bin/sh", "-i")
+	cmd.Env = append(os.Environ(), "TERM=xterm")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	_ = writer.write(ctx, "[shell started]\n")
+
+	errCh := make(chan error, 4)
+	go func() { errCh <- pumpShellOutput(ctx, writer, stdout) }()
+	go func() { errCh <- pumpShellOutput(ctx, writer, stderr) }()
+	go func() { errCh <- readShellInput(ctx, ws, stdin) }()
+	go func() { errCh <- cmd.Wait() }()
+
+	select {
+	case <-ctx.Done():
+		_ = stdin.Close()
+		_ = cmd.Process.Kill()
+		return nil
+	case err := <-errCh:
+		_ = stdin.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		if err == nil || err == io.EOF || websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+			return nil
+		}
+		_ = writer.write(context.Background(), fmt.Sprintf("\n[shell exited: %v]\n", err))
+		return err
+	}
+}
+
+func pumpShellOutput(ctx context.Context, writer *shellWSWriter, r io.Reader) error {
+	buf := make([]byte, 4096)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			if writeErr := writer.write(ctx, string(buf[:n])); writeErr != nil {
+				return writeErr
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func readShellInput(ctx context.Context, ws *websocket.Conn, stdin io.WriteCloser) error {
+	for {
+		typ, data, err := ws.Read(ctx)
+		if err != nil {
+			return err
+		}
+		if typ != websocket.MessageText {
+			continue
+		}
+		if len(data) == 0 || data[len(data)-1] != '\n' {
+			data = append(data, '\n')
+		}
+		if _, err := stdin.Write(data); err != nil {
+			return err
+		}
+	}
+}
+
+func (w *shellWSWriter) write(ctx context.Context, text string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return w.ws.Write(writeCtx, websocket.MessageText, []byte(text))
 }
 
 func logRequests(next http.Handler) http.Handler {

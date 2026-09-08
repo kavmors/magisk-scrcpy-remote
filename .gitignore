@@ -5,7 +5,7 @@
 # Local runtime/test output
 *.log
 *.tmp
-/magisk/token
+*.local
 
 # Go
 /bin/

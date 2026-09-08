@@ -1,5 +1,5 @@
 {
-  "listen": "0.0.0.0:13014",
+  "listen": "0.0.0.0:7382",
   "stateDir": "/data/adb/magisk-scrcpy-remote",
   "scrcpyServerPath": "/data/adb/modules/magisk-scrcpy-remote/bin/scrcpy-server-v4.0",
   "deviceScrcpyServerPath": "/data/local/tmp/msr-scrcpy-server.jar",

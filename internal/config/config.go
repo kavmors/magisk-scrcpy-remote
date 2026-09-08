@@ -51,7 +51,7 @@ func Load(path string) (Config, error) {
 
 func Defaults() Config {
 	return Config{
-		Listen:                 "0.0.0.0:13014",
+		Listen:                 "0.0.0.0:7382",
 		StateDir:               "/data/adb/magisk-scrcpy-remote",
 		ScrcpyServerPath:       "/data/adb/modules/magisk-scrcpy-remote/bin/scrcpy-server-v4.0",
 		DeviceScrcpyServerPath: "/data/local/tmp/msr-scrcpy-server.jar",
@@ -138,7 +138,7 @@ func readToken(tokenPath string) (string, error) {
 
 func normalize(cfg *Config) {
 	if cfg.Listen == "" {
-		cfg.Listen = "0.0.0.0:13014"
+		cfg.Listen = "0.0.0.0:7382"
 	}
 	if cfg.StateDir == "" {
 		cfg.StateDir = "/data/adb/magisk-scrcpy-remote"

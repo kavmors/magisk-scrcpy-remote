@@ -28,7 +28,7 @@ magisk/bin/msr-daemon-arm64
 Then open:
 
 ```text
-https://PHONE_IP:13014
+https://PHONE_IP:7382
 ```
 
 The daemon waits until a non-empty token exists in the module directory. It
@@ -49,7 +49,7 @@ The packaged default token file is:
 
 Write your own token to `token` before or after boot if you want to override
 `token.local`. If both files are missing or empty, the daemon keeps polling
-every 2 seconds and does not listen on `13014` until a token appears:
+every 2 seconds and does not listen on `7382` until a token appears:
 
 ```sh
 adb shell su -c "printf '%s\n' 'your-token-here' > /data/adb/modules/magisk-scrcpy-remote/token"
@@ -58,20 +58,20 @@ adb shell su -c "printf '%s\n' 'your-token-here' > /data/adb/modules/magisk-scrc
 `device-test.sh` also sets up the daemon for USB-forwarded HTTP access:
 
 ```sh
-adb forward tcp:13014 tcp:13014
-open http://127.0.0.1:13014
+adb forward tcp:7382 tcp:7382
+open http://127.0.0.1:7382
 ```
 
 USB forwarding is useful for checking the page and stream. For LAN access, use
 HTTPS with the phone Wi-Fi IP from a machine on the same reachable LAN:
 
 ```text
-https://PHONE_IP:13014
+https://PHONE_IP:7382
 ```
 
 The daemon also accepts plain HTTP on the same port so frp can forward to it.
-When a LAN browser opens `http://PHONE_IP:13014`, the page redirects to
-`https://PHONE_IP:13014` so Chrome enables WebCodecs. The certificate is
+When a LAN browser opens `http://PHONE_IP:7382`, the page redirects to
+`https://PHONE_IP:7382` so Chrome enables WebCodecs. The certificate is
 self-signed; accept the browser warning for this local device.
 
 ## frp HTTP Reverse Proxy
@@ -88,7 +88,7 @@ https://sc-mibox.gd.ddnsto.com:443
 Forward to the phone:
 
 ```text
-http://127.0.0.1:13014
+http://127.0.0.1:7382
 ```
 
 The page uses `wss://sc-mibox.gd.ddnsto.com/ws-stream?...` automatically when
@@ -99,8 +99,8 @@ WebCodecs requires a secure context. Use one of these:
 
 ```text
 https://sc-mibox.gd.ddnsto.com
-https://PHONE_IP:13014
-http://127.0.0.1:13014
+https://PHONE_IP:7382
+http://127.0.0.1:7382
 ```
 
 Chrome on iOS does not work because it uses Apple's WebKit engine rather than

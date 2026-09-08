@@ -17,7 +17,7 @@ TMP_CONFIG="$(mktemp)"
 trap 'rm -f "$TMP_CONFIG"' EXIT
 cat >"$TMP_CONFIG" <<JSON
 {
-  "listen": "0.0.0.0:13014",
+  "listen": "0.0.0.0:7382",
   "stateDir": "$STATE",
   "scrcpyServerPath": "$REMOTE/scrcpy-server-v4.0",
   "deviceScrcpyServerPath": "/data/local/tmp/msr-scrcpy-server.jar",
